@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#050914">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Asteroid Hero — defend planets from incoming asteroids. Blast the small ones, deflect the big ones.">
+<title>Asteroid Hero</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%234da6ff'/></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="hud-left">
+    <div id="planet-name">EARTH</div>
+    <div id="shield-bar"><div id="shield-fill"></div></div>
+  </div>
+  <div id="hud-right">
+    <div id="score">0</div>
+    <div id="lives"></div>
+  </div>
+  <button id="btn-pause" aria-label="Pause">II</button>
+</div>
+
+<div id="overlay">
+  <div id="menu" class="panel">
+    <h1>ASTEROID<span> HERO</span></h1>
+    <p class="tagline">Asteroids are falling toward the planet.<br>
+    Blast the small ones. <b>Push</b> the big ones off course with laser fire.<br>
+    Use gravity — and collisions — to your advantage.</p>
+    <button class="big-btn" id="btn-start">LAUNCH</button>
+    <p class="controls-hint">
+      <b>Touch:</b> left side to fly &nbsp;·&nbsp; right side to aim &amp; fire<br>
+      <b>Keyboard:</b> WASD to fly &nbsp;·&nbsp; mouse to aim &nbsp;·&nbsp; click / space to fire
+    </p>
+  </div>
+
+  <div id="level-intro" class="panel hidden">
+    <h2 id="li-title">SECTOR 1</h2>
+    <div id="li-planet-dot"></div>
+    <p id="li-desc"></p>
+    <button class="big-btn" id="btn-go">DEFEND</button>
+  </div>
+
+  <div id="level-clear" class="panel hidden">
+    <h2>SECTOR CLEARED</h2>
+    <p id="lc-stats"></p>
+    <button class="big-btn" id="btn-next">NEXT SECTOR</button>
+  </div>
+
+  <div id="game-over" class="panel hidden">
+    <h2 id="go-title">GAME OVER</h2>
+    <p id="go-stats"></p>
+    <button class="big-btn" id="btn-retry">TRY AGAIN</button>
+  </div>
+
+  <div id="paused" class="panel hidden">
+    <h2>PAUSED</h2>
+    <button class="big-btn" id="btn-resume">RESUME</button>
+    <button class="small-btn" id="btn-quit">QUIT TO MENU</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
