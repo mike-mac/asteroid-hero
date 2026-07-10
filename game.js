@@ -444,15 +444,11 @@ function update(dt) {
     }
   } else {
     let mv = input.usingTouch ? input.move : readKeyboardMove();
-    const THRUST = 420 * UNIT;
-    ship.vx += mv.x * THRUST * dt;
-    ship.vy += mv.y * THRUST * dt;
-    applyGravity(ship, dt, 0.35);
-    // drag
-    const drag = Math.pow(0.4, dt);
-    ship.vx *= drag; ship.vy *= drag;
-    const spd = Math.hypot(ship.vx, ship.vy), maxSpd = 340 * UNIT;
-    if (spd > maxSpd) { ship.vx *= maxSpd / spd; ship.vy *= maxSpd / spd; }
+    // stick sets desired velocity; ship glides toward it (no gravity, no drift fighting)
+    const MAXV = 360 * UNIT;
+    const ease = 1 - Math.exp(-6.5 * dt);
+    ship.vx += (mv.x * MAXV - ship.vx) * ease;
+    ship.vy += (mv.y * MAXV - ship.vy) * ease;
     ship.x += ship.vx * dt;
     ship.y += ship.vy * dt;
     // keep on screen
@@ -485,22 +481,59 @@ function update(dt) {
     S.fireTimer -= dt;
     if (input.firing && S.fireTimer <= 0) {
       S.fireTimer = 0.14;
-      const a = ship.angle;
+      let a = ship.angle;
+      // aim assist: snap to the leading intercept of the best target within ~20°
+      const BOLT_SPD = 760 * UNIT;
+      let bestDiff = 0.35, bestAng = null;
+      for (const ast of asteroids) {
+        const t = Math.hypot(ast.x - ship.x, ast.y - ship.y) / BOLT_SPD;
+        const ang = Math.atan2(ast.y + ast.vy * t - ship.y, ast.x + ast.vx * t - ship.x);
+        let diff = Math.abs(ang - a);
+        if (diff > Math.PI) diff = TAU - diff;
+        if (diff < bestDiff) { bestDiff = diff; bestAng = ang; }
+      }
+      if (bestAng !== null) a = bestAng;
       bolts.push({
         x: ship.x + Math.cos(a) * ship.r * 1.4,
         y: ship.y + Math.sin(a) * ship.r * 1.4,
-        vx: Math.cos(a) * 760 * UNIT + ship.vx * 0.3,
-        vy: Math.sin(a) * 760 * UNIT + ship.vy * 0.3,
+        vx: Math.cos(a) * BOLT_SPD,
+        vy: Math.sin(a) * BOLT_SPD,
         life: 1.4,
       });
-      // recoil nudges the ship — physics you can feel
-      ship.vx -= Math.cos(a) * 14 * UNIT;
-      ship.vy -= Math.sin(a) * 14 * UNIT;
+      // muzzle flash instead of recoil
+      particles.push({
+        x: ship.x + Math.cos(a) * ship.r * 1.6,
+        y: ship.y + Math.sin(a) * ship.r * 1.6,
+        vx: Math.cos(a) * 60 * UNIT, vy: Math.sin(a) * 60 * UNIT,
+        life: 0.12, t: 0, r: 3.5 * UNIT, c: 'rgba(190,245,255,0.95)',
+      });
       AudioFX.laser();
     }
 
-    // ship vs planet
-    if (dist2(ship.x, ship.y, cx, cy) < (planetR + ship.r) ** 2) killShip();
+    // ship vs planet: the shield repels — bounce, don't die
+    {
+      const dp = Math.hypot(ship.x - cx, ship.y - cy) || 1;
+      const minD = planetR + ship.r + 6 * UNIT;
+      if (dp < minD) {
+        const nx = (ship.x - cx) / dp, ny = (ship.y - cy) / dp;
+        ship.x = cx + nx * minD;
+        ship.y = cy + ny * minD;
+        const vn = ship.vx * nx + ship.vy * ny;
+        if (vn < 0) {
+          ship.vx -= 1.8 * vn * nx;
+          ship.vy -= 1.8 * vn * ny;
+          S.shake = Math.min(1, S.shake + 0.12);
+          for (let i = 0; i < 6; i++) {
+            const pa = Math.atan2(ny, nx) + rand(-1, 1);
+            particles.push({
+              x: ship.x, y: ship.y,
+              vx: Math.cos(pa) * 80 * UNIT, vy: Math.sin(pa) * 80 * UNIT,
+              life: 0.3, t: 0, r: 2 * UNIT, c: 'rgba(90,230,255,0.9)',
+            });
+          }
+        }
+      }
+    }
   }
 
   // --- bolts ---
