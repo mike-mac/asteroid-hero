@@ -16,6 +16,12 @@ from incoming asteroids using lasers, ship movement, and gravity itself.
 - Anything that escapes the gravity well counts as a save. Protect the
   planet's shield; when it's gone, the planet is lost.
 
+## Modes
+
+- **Normal** — run out of lives and you retry the sector you're on, so you
+  can keep advancing and explore later planets.
+- **Hard** — run out of lives and it's back to Sector 1.
+
 ## Controls
 
 | | Move | Aim | Fire |

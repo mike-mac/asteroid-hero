@@ -184,6 +184,19 @@ h2 {
 
 .big-btn:active { transform: scale(0.94); }
 
+.big-btn.hard {
+  background: linear-gradient(135deg, #ff8a5a, #ff5a7a);
+  box-shadow: 0 0 24px rgba(255, 122, 90, 0.5);
+  margin-top: 18px;
+}
+
+.mode-desc {
+  font-size: 11px;
+  letter-spacing: 1px;
+  opacity: 0.55;
+  margin-top: 2px;
+}
+
 .small-btn {
   display: block;
   margin: 14px auto 0;

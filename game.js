@@ -105,6 +105,8 @@ const LEVELS = [
 // ---------- game state ----------
 const S = {
   mode: 'menu',        // menu | intro | play | clear | over | paused
+  hardMode: false,     // hard: game over restarts campaign; normal: retry sector
+  sectorStartScore: 0,
   levelIndex: 0,
   loop: 0,             // how many times we've cycled all levels
   score: 0,
@@ -240,7 +242,7 @@ function makeShip() {
   return {
     x: W / 2, y: H / 2 - (level().planetR + 120) * UNIT,
     vx: 0, vy: 0, angle: -Math.PI / 2,
-    r: 10 * UNIT, invuln: 3, dead: false,
+    r: 10 * UNIT, invuln: 3, dead: false, throttle: 0,
   };
 }
 
@@ -319,14 +321,22 @@ function showPanel(name) {
 }
 function hidePanels() { overlay.classList.add('hidden'); }
 
-function startGame() {
+function startGame(hard) {
+  S.hardMode = !!hard;
   S.levelIndex = 0; S.loop = 0; S.score = 0; S.lives = 3;
+  showIntro();
+}
+
+function retrySector() {
+  S.lives = 3;
+  S.score = S.sectorStartScore;
   showIntro();
 }
 
 function showIntro() {
   const L = level();
   S.mode = 'intro';
+  S.sectorStartScore = S.score;
   $('li-title').textContent = `SECTOR ${S.loop * LEVELS.length + S.levelIndex + 1} — ${L.name}`;
   $('li-desc').textContent = L.desc;
   const dot = $('li-planet-dot');
@@ -376,7 +386,11 @@ function nextLevel() {
 function gameOver(reason) {
   S.mode = 'over';
   $('go-title').textContent = reason === 'planet' ? 'PLANET LOST' : 'SHIP DESTROYED';
-  $('go-stats').textContent = `Final score: ${S.score}\nSectors survived: ${S.loop * LEVELS.length + S.levelIndex}`;
+  const sector = S.loop * LEVELS.length + S.levelIndex + 1;
+  $('go-stats').textContent = S.hardMode
+    ? `Final score: ${S.score}\nSectors survived: ${sector - 1}\nHard mode: back to Sector 1.`
+    : `Score: ${S.sectorStartScore}\nRegroup and retry Sector ${sector}.`;
+  $('btn-retry').textContent = S.hardMode ? 'RESTART CAMPAIGN' : 'RETRY SECTOR';
   showPanel('over');
 }
 
@@ -385,10 +399,12 @@ function togglePause() {
   else if (S.mode === 'paused') { S.mode = 'play'; hidePanels(); }
 }
 
-$('btn-start').addEventListener('click', () => { AudioFX.init(); startGame(); });
+$('btn-start').addEventListener('click', () => { AudioFX.init(); startGame(false); });
+$('btn-start-hard').addEventListener('click', () => { AudioFX.init(); startGame(true); });
 $('btn-go').addEventListener('click', () => { AudioFX.init(); beginPlay(); });
 $('btn-next').addEventListener('click', nextLevel);
-$('btn-retry').addEventListener('click', startGame);
+$('btn-retry').addEventListener('click', () => S.hardMode ? startGame(true) : retrySector());
+$('btn-go-menu').addEventListener('click', () => { S.mode = 'menu'; document.getElementById('hud').classList.add('hidden'); showPanel('menu'); });
 $('btn-pause').addEventListener('click', togglePause);
 $('btn-resume').addEventListener('click', togglePause);
 $('btn-quit').addEventListener('click', () => { S.mode = 'menu'; document.getElementById('hud').classList.add('hidden'); showPanel('menu'); });
@@ -444,11 +460,18 @@ function update(dt) {
     }
   } else {
     let mv = input.usingTouch ? input.move : readKeyboardMove();
-    // stick sets desired velocity; ship glides toward it (no gravity, no drift fighting)
-    const MAXV = 360 * UNIT;
-    const ease = 1 - Math.exp(-6.5 * dt);
-    ship.vx += (mv.x * MAXV - ship.vx) * ease;
-    ship.vy += (mv.y * MAXV - ship.vy) * ease;
+    const mvMag = Math.hypot(mv.x, mv.y);
+    // throttle builds the longer you hold thrust — speed grows with acceleration time
+    if (mvMag > 0.05) ship.throttle = Math.min(1, ship.throttle + dt / 0.9);
+    else ship.throttle = Math.max(0, ship.throttle - dt / 0.35);
+    const MAXV = 320 * UNIT;
+    const targetSpd = MAXV * (0.45 + 0.55 * ship.throttle);
+    // firm easing while steering; loose when released so the ship drifts a while
+    const ease = 1 - Math.exp(-(mvMag > 0.05 ? 6 : 1.3) * dt);
+    ship.vx += (mv.x * targetSpd - ship.vx) * ease;
+    ship.vy += (mv.y * targetSpd - ship.vy) * ease;
+    // a whisper of gravity — park the ship and it slowly falls inward
+    applyGravity(ship, dt, 0.08);
     ship.x += ship.vx * dt;
     ship.y += ship.vy * dt;
     // keep on screen
@@ -946,6 +969,9 @@ function menuAmbience() {
     if (asteroids.length < 5) asteroids.push(makeAsteroid());
   }, 16);
 }
+
+// debug/testing handle (not part of the public UI)
+window.__ah = { S, gameOver, startGame, nextLevel, levelCleared };
 
 menuAmbience();
 showPanel('menu');
