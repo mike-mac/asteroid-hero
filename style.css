@@ -197,6 +197,14 @@ h2 {
   margin-top: 2px;
 }
 
+#best {
+  margin-top: 16px;
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: #7af0c9;
+  opacity: 0.8;
+}
+
 .small-btn {
   display: block;
   margin: 14px auto 0;

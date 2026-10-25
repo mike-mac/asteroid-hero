@@ -13,6 +13,7 @@ const ctx = canvas.getContext('2d');
 // ---------- sizing ----------
 let W = 0, H = 0, DPR = 1, UNIT = 1; // UNIT scales physics to screen size
 function resize() {
+  const oldW = W, oldH = H, oldUnit = UNIT;
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth;
   H = window.innerHeight;
@@ -20,9 +21,9 @@ function resize() {
   canvas.height = Math.round(H * DPR);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   UNIT = Math.min(W, H) / 700; // tuned for ~700px reference viewport
+  if (oldW) rescaleWorld(oldW, oldH, UNIT / oldUnit);
 }
 window.addEventListener('resize', resize);
-resize();
 
 // ---------- utils ----------
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -131,6 +132,31 @@ let particles = [];
 let stars = [];
 
 function level() { return LEVELS[S.levelIndex]; }
+
+// best score per mode, kept in this browser only
+const BEST_KEY = 'asteroid-hero:best';
+let best = { normal: 0, hard: 0 };
+try { best = { ...best, ...JSON.parse(localStorage.getItem(BEST_KEY)) }; } catch (e) { /* storage unavailable */ }
+function recordBest() {
+  const k = S.hardMode ? 'hard' : 'normal';
+  if (S.score <= best[k]) return false;
+  best[k] = S.score;
+  try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); } catch (e) { /* storage unavailable */ }
+  return true;
+}
+
+// keep entities centered on the planet and sized to the new UNIT (e.g. phone rotation)
+function rescaleWorld(oldW, oldH, k) {
+  const move = o => {
+    o.x = W / 2 + (o.x - oldW / 2) * k;
+    o.y = H / 2 + (o.y - oldH / 2) * k;
+    o.vx *= k; o.vy *= k;
+  };
+  for (const a of asteroids) { move(a); a.r *= k; }
+  for (const b of bolts) move(b);
+  for (const p of particles) { move(p); p.r *= k; }
+  if (ship) { move(ship); ship.r *= k; }
+}
 function diffMult() { return 1 + S.loop * 0.35; }
 
 function makeStars() {
@@ -141,6 +167,7 @@ function makeStars() {
       r: rand(0.4, 1.6), tw: rand(0, TAU), sp: rand(0.5, 2) });
   }
 }
+resize();
 makeStars();
 window.addEventListener('resize', makeStars);
 
@@ -208,6 +235,7 @@ canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
 window.addEventListener('keydown', e => {
   input.keys[e.code] = true;
+  if (/^(Key[WASD]|Arrow)/.test(e.code)) input.usingTouch = false;
   if (e.code === 'Space') { input.firing = true; e.preventDefault(); }
   if (e.code === 'Escape' || e.code === 'KeyP') togglePause();
 });
@@ -217,9 +245,11 @@ window.addEventListener('keyup', e => {
 });
 canvas.addEventListener('mousemove', e => {
   input.mouse.x = e.clientX; input.mouse.y = e.clientY;
+  input.usingTouch = false;
 });
 canvas.addEventListener('mousedown', e => {
   AudioFX.init();
+  input.usingTouch = false;
   input.mouse.down = true; input.firing = true;
 });
 window.addEventListener('mouseup', () => {
@@ -276,6 +306,7 @@ function makeAsteroid(opts = {}) {
     age: 0,
     hue: rand(-14, 14),
     hitFlash: 0,
+    touched: !!opts.touched, // player has affected it (laser or knock-on collision)
   };
 }
 
@@ -305,6 +336,7 @@ function shatter(ast) {
         vx: ast.vx + Math.cos(a) * rand(30, 70) * UNIT,
         vy: ast.vy + Math.sin(a) * rand(30, 70) * UNIT,
         r: ast.r * rand(0.42, 0.55),
+        touched: ast.touched,
       }));
     }
   }
@@ -316,10 +348,17 @@ const overlay = $('overlay');
 const panels = { menu: $('menu'), intro: $('level-intro'), clear: $('level-clear'), over: $('game-over'), paused: $('paused') };
 
 function showPanel(name) {
+  if (name === 'menu') {
+    $('best').textContent = best.normal || best.hard
+      ? `BEST  ${best.normal}  ·  HARD ${best.hard}` : '';
+  }
   overlay.classList.remove('hidden');
   for (const k in panels) panels[k].classList.toggle('hidden', k !== name);
 }
-function hidePanels() { overlay.classList.add('hidden'); }
+function hidePanels() {
+  overlay.classList.add('hidden');
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
 
 function startGame(hard) {
   S.hardMode = !!hard;
@@ -369,6 +408,7 @@ function levelCleared() {
   S.mode = 'clear';
   const bonus = 250 + Math.round(S.shield / S.shieldMax * 250);
   S.score += bonus;
+  recordBest();
   $('lc-stats').textContent =
     `Destroyed: ${S.destroyed}   Deflected: ${S.deflected}\n` +
     `Shield remaining: ${Math.round(S.shield / S.shieldMax * 100)}%\n` +
@@ -385,11 +425,12 @@ function nextLevel() {
 
 function gameOver(reason) {
   S.mode = 'over';
+  const isBest = recordBest();
   $('go-title').textContent = reason === 'planet' ? 'PLANET LOST' : 'SHIP DESTROYED';
   const sector = S.loop * LEVELS.length + S.levelIndex + 1;
   $('go-stats').textContent = S.hardMode
-    ? `Final score: ${S.score}\nSectors survived: ${sector - 1}\nHard mode: back to Sector 1.`
-    : `Score: ${S.sectorStartScore}\nRegroup and retry Sector ${sector}.`;
+    ? `Final score: ${S.score}${isBest ? '  — NEW BEST!' : ''}\nSectors survived: ${sector - 1}\nHard mode: back to Sector 1.`
+    : `Score: ${S.score}${isBest ? '  — NEW BEST!' : ''}\nRegroup and retry Sector ${sector}.`;
   $('btn-retry').textContent = S.hardMode ? 'RESTART CAMPAIGN' : 'RETRY SECTOR';
   showPanel('over');
 }
@@ -582,6 +623,7 @@ function update(dt) {
         a.vy += (b.vy / bd) * impulse;
         a.hp -= 1;
         a.hitFlash = 0.12;
+        a.touched = true;
         particles.push({
           x: b.x, y: b.y, vx: -b.vx * 0.08, vy: -b.vy * 0.08,
           life: 0.25, t: 0, r: 2.5 * UNIT, c: '#aef2ff',
@@ -624,14 +666,16 @@ function update(dt) {
       continue;
     }
 
-    // escaped the gravity well — counts as a save
+    // escaped the gravity well — a save if the player pushed it, otherwise just a miss
     const dPlanet = Math.sqrt(dPlanet2);
     const outward = (a.x - cx) * a.vx + (a.y - cy) * a.vy > 0;
     if (a.age > 1 && outward && dPlanet > spawnR + 60) {
-      S.score += Math.round(a.r / UNIT * 2.5);
-      S.deflected++;
+      if (a.touched) {
+        S.score += Math.round(a.r / UNIT * 2.5);
+        S.deflected++;
+        updateHUD();
+      }
       asteroids.splice(i, 1);
-      updateHUD();
       continue;
     }
 
@@ -639,6 +683,7 @@ function update(dt) {
     if (!ship.dead && ship.invuln <= 0 &&
         dist2(a.x, a.y, ship.x, ship.y) < (a.r + ship.r * 0.8) ** 2) {
       killShip();
+      if (S.mode !== 'play') return;
     }
   }
 
@@ -664,6 +709,7 @@ function update(dt) {
       const vn = rvx * nx + rvy * ny;
       if (vn > 0) continue;
       const impactSpeed = -vn;
+      if (a.touched || b.touched) a.touched = b.touched = true;
       // elastic-ish bounce
       const e = 0.85;
       const jimp = -(1 + e) * vn / (1 / ma + 1 / mb);
@@ -896,6 +942,33 @@ function drawParticles() {
   ctx.restore();
 }
 
+// edge arrows pointing at rocks that are still off-screen and heading in
+function drawIncoming() {
+  if (S.mode !== 'play' && S.mode !== 'paused') return;
+  const cx = W / 2, cy = H / 2, m = 16;
+  for (const a of asteroids) {
+    if (a.x > -a.r && a.x < W + a.r && a.y > -a.r && a.y < H + a.r) continue;
+    const dx = a.x - cx, dy = a.y - cy;
+    if (dx * a.vx + dy * a.vy >= 0) continue; // moving away
+    // clamp the direction to the screen edge; fade arrows for far-away rocks
+    const k = Math.min((W / 2 - m) / Math.abs(dx || 1e-6), (H / 2 - m) / Math.abs(dy || 1e-6));
+    const beyond = Math.hypot(dx, dy) * (1 - k);
+    const s = (a.massive ? 9 : 6) * Math.max(UNIT, 0.8);
+    ctx.save();
+    ctx.globalAlpha = clamp(1 - beyond / 500, 0.3, 0.9);
+    ctx.translate(cx + dx * k, cy + dy * k);
+    ctx.rotate(Math.atan2(-dy, -dx)); // point toward the planet
+    ctx.fillStyle = a.massive ? '#ff8a5a' : '#ffd27a';
+    ctx.beginPath();
+    ctx.moveTo(s, 0);
+    ctx.lineTo(-s * 0.7, s * 0.8);
+    ctx.lineTo(-s * 0.7, -s * 0.8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawSticks() {
   if (!input.usingTouch || S.mode !== 'play') return;
   ctx.save();
@@ -929,6 +1002,7 @@ function render() {
   for (const a of asteroids) drawAsteroid(a);
   drawBolts();
   if (ship && S.mode !== 'menu') drawShip();
+  drawIncoming();
   drawSticks();
   ctx.restore();
   if (S.flash > 0) {
@@ -943,7 +1017,10 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   if (S.mode === 'play') update(dt);
-  else S.time += dt; // keep ambient animation alive
+  else {
+    S.time += dt; // keep ambient animation alive
+    if (S.mode === 'menu') menuDrift(dt);
+  }
   render();
   requestAnimationFrame(frame);
 }
@@ -957,17 +1034,16 @@ function menuAmbience() {
     a.vx *= 0.3; a.vy *= 0.3;
     asteroids.push(a);
   }
-  // slow orbital drift, no gameplay
-  setInterval(() => {
-    if (S.mode !== 'menu') return;
-    for (let i = asteroids.length - 1; i >= 0; i--) {
-      const a = asteroids[i];
-      applyGravity(a, 0.016, 0.4);
-      a.x += a.vx * 0.016; a.y += a.vy * 0.016; a.rot += a.rotSp * 0.016;
-      if (dist2(a.x, a.y, W / 2, H / 2) < (level().planetR * UNIT * 1.2) ** 2) asteroids.splice(i, 1);
-    }
-    if (asteroids.length < 5) asteroids.push(makeAsteroid());
-  }, 16);
+}
+// slow orbital drift, no gameplay
+function menuDrift(dt) {
+  for (let i = asteroids.length - 1; i >= 0; i--) {
+    const a = asteroids[i];
+    applyGravity(a, dt, 0.4);
+    a.x += a.vx * dt; a.y += a.vy * dt; a.rot += a.rotSp * dt;
+    if (dist2(a.x, a.y, W / 2, H / 2) < (level().planetR * UNIT * 1.2) ** 2) asteroids.splice(i, 1);
+  }
+  if (asteroids.length < 5) asteroids.push(makeAsteroid());
 }
 
 // debug/testing handle (not part of the public UI)
