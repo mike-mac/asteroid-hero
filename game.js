@@ -132,6 +132,7 @@ let particles = [];
 let stars = [];
 
 function level() { return LEVELS[S.levelIndex]; }
+const REF_SPAWN = Math.hypot(700, 700) * 0.55; // spawn radius (game units) the levels were tuned at
 
 // best score per mode, kept in this browser only
 const BEST_KEY = 'asteroid-hero:best';
@@ -279,20 +280,29 @@ function makeShip() {
 function makeAsteroid(opts = {}) {
   const L = level();
   const cx = W / 2, cy = H / 2;
-  const spawnR = Math.hypot(W, H) * 0.55;
   const a = opts.angle ?? Math.random() * TAU;
   const big = opts.big ?? (Math.random() < L.bigChance);
   const r = opts.r ?? (big ? rand(32, 46) : rand(9, 24)) * UNIT;
-  const x = opts.x ?? cx + Math.cos(a) * spawnR;
-  const y = opts.y ?? cy + Math.sin(a) * spawnR;
+  // spawn just past the screen edge in this direction, never inside the reference radius
+  const edge = Math.min(W / 2 / (Math.abs(Math.cos(a)) || 1e-9), H / 2 / (Math.abs(Math.sin(a)) || 1e-9));
+  const spawnD = Math.max(REF_SPAWN * UNIT, edge + r + 20 * UNIT);
+  const x = opts.x ?? cx + Math.cos(a) * spawnD;
+  const y = opts.y ?? cy + Math.sin(a) * spawnD;
   let vx, vy;
   if (opts.vx !== undefined) { vx = opts.vx; vy = opts.vy; }
   else {
-    // aim at planet with tangential jitter so some arrive on curved paths
-    const sp = rand(L.speed[0], L.speed[1]) * diffMult() * UNIT;
-    const toC = Math.atan2(cy - y, cx - x) + rand(-0.45, 0.45);
-    vx = Math.cos(toC) * sp;
-    vy = Math.sin(toC) * sp;
+    // aim at planet with tangential jitter so some arrive on curved paths. Speed and
+    // jitter are defined at the reference spawn radius; rocks starting further out
+    // (tall/wide screens) get the same orbit, conserving energy and angular momentum,
+    // so every screen shape plays like the 700px reference.
+    const vRef = rand(L.speed[0], L.speed[1]) * diffMult();
+    const jRef = rand(-0.45, 0.45);
+    const d0 = Math.hypot(x - cx, y - cy) / UNIT;
+    const v0 = Math.sqrt(Math.max(vRef * vRef + 2 * L.gravity * (1 / d0 - 1 / REF_SPAWN), 15 * 15));
+    const j0 = Math.asin(clamp(REF_SPAWN * vRef * Math.sin(jRef) / (d0 * v0), -1, 1));
+    const toC = Math.atan2(cy - y, cx - x) + j0;
+    vx = Math.cos(toC) * v0 * UNIT;
+    vy = Math.sin(toC) * v0 * UNIT;
   }
   // irregular outline (osmos-style soft blob with a rocky rim)
   const verts = [];
@@ -467,7 +477,8 @@ function applyGravity(o, dt, factor = 1) {
   const dx = cx - o.x, dy = cy - o.y;
   const d2 = dx * dx + dy * dy;
   const d = Math.sqrt(d2) || 1;
-  const a = (level().gravity * UNIT * factor) / Math.max(d2, 900);
+  // GM scales with UNIT³ so accelerations match the reference viewport in game units
+  const a = (level().gravity * UNIT * UNIT * UNIT * factor) / Math.max(d2, 900 * UNIT * UNIT);
   o.vx += (dx / d) * a * dt;
   o.vy += (dy / d) * a * dt;
 }
