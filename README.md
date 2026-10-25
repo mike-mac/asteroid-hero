@@ -45,8 +45,6 @@ npx serve .
 
 ## Deploy
 
-Hosted on [Cloudflare Pages](https://pages.cloudflare.com/). Deploy with:
-
-```sh
-npx wrangler pages deploy . --project-name=asteroid-hero
-```
+Hosted on [Cloudflare Pages](https://pages.cloudflare.com/) (project
+`asteroid-hero-git`, domain hero.remotemike.com), connected to this repo:
+every push to `main` deploys automatically. No build step.
